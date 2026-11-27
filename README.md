@@ -23,23 +23,22 @@ FND-01 implements the local application shell and shared adapter contract. Lates
 ## Sources and limitations
 Supplier presentation, version 1.0 dated 26 November 2026, slides 2–19; eight reference screenshots; client messages on 26–27 November; PM Pillar Standard Formats.xls (legacy workbook, previously text-reviewed; not fully revalidated for formulas, hidden sheets or visual layout in this package). Workbook field mappings remain provisional and require approved samples; no internal source documents are redistributed here. Foundation test evidence is in [docs/TESTING.md](docs/TESTING.md). The proposed architecture is subject to company IT approval, independent security review, and customer workflow sign-off.
 
-## Run the foundation on Windows
+## Run the M1 workspace on Windows
 
-Use native Node.js **22.23.5** with npm **10.9.9** and Git. From the repository root on `feature/foundation`, run these commands in PowerShell. Package installation needs access to the public npm registry. The application runs with an empty environment.
+Use native Node.js **22.23.5** and npm **10.9.9**. In a fresh checkout run `npm.cmd ci` once. In the ignored `.env.local`, set `VITE_SUPABASE_URL` to `https://fgawjraoekdnhdbqqrvm.supabase.co` and `VITE_SUPABASE_PUBLISHABLE_KEY` to that project's browser publishable key. Keep passwords and privileged keys out of Vite configuration. Missing or invalid settings display **Workspace unavailable**. Restart Vite or rebuild after changing configuration.
 
 ```powershell
 node --version
 npm.cmd --version
-npm.cmd ci
 npm.cmd run check
 npm.cmd run dev
 ```
 
-Open **http://127.0.0.1:5173/**. The health check is the rendered **Foundation shell ready** and **Data connection — Disconnected** status. Stop with Ctrl+C. If the port is occupied, use `npm.cmd run dev -- --port 5174` and open the printed loopback address.
+Open **http://127.0.0.1:5173/machines** or a synthetic machine's **/m/:qrToken** path. Enter the provisioned account's password directly in the browser. A fresh session starts at sign-in and resumes the local machine path after verification. Stop with Ctrl+C. If the port is occupied, use `npm.cmd run dev -- --port 5174`.
 
 `npm.cmd run check` runs lint, TypeScript, the unit test and the Vite build in sequence. To check the built assets, run `npm.cmd run preview` after the build and open **http://127.0.0.1:4173/**. Generated assets live in ignored `dist/`.
 
-The [shared contract](src/contracts/index.ts), [adapter handoff](src/lib/data/README.md) and [migration directory](supabase/migrations/README.md) define the backend integration points. The two entries in `.env.example` are intentionally blank. A future approved hosted adapter can use a local copy made with `Copy-Item .env.example .env.local` in a checkout without an existing local configuration.
+The [M1 integration evidence](docs/TESTING.md#m1-i-integration) includes the interactive browser acceptance procedure and physical Android test plan.
 
 ## Windows cloud-development setup (v1.1)
 Use Node.js LTS, npm, Git and a private repository. Docker Desktop, WSL and local PostgreSQL are not required on developer PCs. Create a separate synthetic-only Supabase development project manually after approving its plan and region; no real company data. FND-01 does not need access to any hosted project. Developer A alone applies reviewed versioned migrations to the verified development target after explicit approval. Developer B uses scoped synthetic app accounts or explicit test fixtures, not administrative credentials. Keep staging and production separate; add them only with approval. See docs/ARCHITECTURE.md for workflow and official references.

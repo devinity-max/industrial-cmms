@@ -93,6 +93,10 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
   }
   function storageChanged(event: StorageEvent) {
     if (event.key === epochKey || event.key === null) sync();
+    // Another tab may receive SIGNED_IN before the initiating tab finishes its
+    // profile check. Reverify once its pending marker is cleared.
+    if (event.key === connection.storageKey + ':pending' && event.newValue === null &&
+        listeners.size && isCurrent(connection.epoch)) void notifyVerified();
   }
   window.addEventListener('storage', storageChanged);
 
