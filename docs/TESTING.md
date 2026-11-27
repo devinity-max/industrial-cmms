@@ -57,3 +57,7 @@ The Windows GitHub Actions workflow is configured for the same clean install and
 
 ## Cloud-development isolation
 Foundation CI must not need hosted credentials. Run database and RLS integration tests against disposable CI infrastructure or separately approved test projects, using real synthetic auth identities. Do not reset shared dev or production, do not run tests with privileged bypass credentials to prove Viewer restrictions, and verify target project identity before any write. No Docker or WSL required on either Windows PC.
+
+## FND-02 contract verification
+
+27 November 2026, native Windows, foundation baseline `e41b031`. `npm.cmd run check` passed lint and TypeScript checks, both Vitest tests and the Vite build. TypeScript verifies the public session keys, bounded page sizes and separation of M1 from provisional operations. Runtime auth, scoped authorization and pagination tests depend on the M1 implementation. Hosted CI and human contract review are pending.

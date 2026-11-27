@@ -16,18 +16,25 @@ All tables have keys, foreign keys, scope enforcement and indexes for common que
 | Operation | Input | Output | Permission |
 |---|---|---|---|
 | signIn | approved login identifier + password | managed session | provisioned account |
-| listAssets | page/filter | scoped AssetSummary[] | viewer/admin |
+| getAuthState / onAuthStateChange | current managed session / listener | auth snapshot / unsubscribe | local lifecycle |
+| signOut | current session | confirmed sign-out or sanitized error | current account |
+| listAssets | cursor, optional filter and page size | scoped items and nextCursor | viewer/admin |
 | getAssetByQr | qr_token | AssetDetail or generic not found/denied | viewer/admin with asset scope |
 | listHistory | assetId, cursor | scoped HistoryItem[] | viewer/admin |
-| getDailyObligation | assetId, operationalDate | DailyObligation or none | viewer/admin |
-| submitDaily | obligationId, expectedVersion, requestId, activities, reason if revision | persisted submission id/version/status/time | scoped admin |
-| listAlerts | cursor | scoped NotificationSummary[] | approved recipient/admin |
+| getDailyObligation (provisional M2) | assetId, operationalDate | DailyObligation or none | viewer/admin |
+| submitDaily (provisional M2) | obligationId, expectedVersion, requestId, activities, reason if revision | persisted submission id/version/status/time | scoped admin |
+| listAlerts (provisional M3) | cursor | scoped NotificationSummary[] | approved recipient/admin |
 
 Shared TS contract lives in `src/contracts/`. AssetSummary: id, machineNumber, name, department, displayStatus (unknown unless recorded); AssetDetail adds qrToken, approved fields. HistoryItem: id, assetId, kind, occurredAt, summary, actorDisplay, version. DailyObligation: id, assetId, operationalDate, dueAt, state, version. ActivityInput: startedAt/endedAt ISO timestamps or null, category, activity, observation, action, spareText, workStatus, remarks. Error shape `{code,message,requestId}` with sanitized message; code UNAUTHENTICATED, NOT_FOUND_OR_DENIED, VALIDATION, CONFLICT, TEMPORARY_FAILURE. Never expose raw DB errors. API semantics and exact TS types finalized by both owners before parallel work. Do not expose a service key, role selector or mock fallback in real app. Mock adapter only explicitly enabled in local tests; fail closed otherwise.
 
-### FND-01 contract for developer review
+### M1 contract for developer review
 
-[The TypeScript interface](../src/contracts/index.ts) covers the seven operations in the table. The public session projection contains the authenticated user ID. The managed auth provider owns session tokens. Each operation returns a discriminated success or sanitized error. History and alerts return an opaque continuation cursor, with `null` marking the last page. Asset listing uses a one-based page number and optional text filter. A successful `getDailyObligation` may return `null` for an authorized asset/date with no obligation. An access denial produces an error.
+[The shared contract](../src/contracts/index.ts) separates M1 from provisional M2/M3 operations. M1 implementations and test fixtures implement only `CmmsAdapter`.
+
+- **Session lifecycle.** Restore with `getAuthState()`. Subscription delivers the current snapshot first and then ordered changes, including changes in other tabs, until unsubscribed. A verified session exposes only the user ID. No session yields `signed_out`. A session that expired and cannot be renewed because credentials are invalid yields `expired` and requires login. A network or provider outage yields a sanitized `TEMPORARY_FAILURE` and permits retry. Until verification succeeds, withhold protected content. On loss or change of identity discard cached asset data, capabilities and stale in-flight results.
+- **Sign-out.** Immediately lock protected UI, clear local session material and cached records across tabs, and request provider invalidation of the current session's refresh capability. Report success only on confirmed invalidation or an already absent session. On uncertain remote completion return `TEMPORARY_FAILURE`, keep the client signed out and do not claim remote revocation.
+- **Asset detail.** On authorized lookup the server computes `capabilities.canManageAsset` for the returned asset using active memberships for that machine and its owning plant. Never reuse this decision on another asset. Capabilities guide display only. Every read and mutation independently enforces scope through RLS and server-side checks. An inaccessible or missing asset yields `NOT_FOUND_OR_DENIED`.
+- **Asset pages.** Omit the cursor on the first request. Page size defaults to 25 and accepts 10, 25 or 50. The server rejects other sizes with `VALIDATION`. Apply current scope and filter before keyset pagination by immutable asset UUID ascending. Return a non-null opaque cursor only when more matching rows exist. Bind continuation to caller and query, reject invalid or mismatched cursors, and restart pagination on filter or size changes. Each page reflects current permissions.
 
 Instants use UTC ISO 8601 strings. Operational dates use plant-local YYYY-MM-DD. The daily receipt carries the persisted version and server timestamp. Status vocabularies, additional asset fields and ledger validation rules await owner review. The interface grants no permissions. Developers A and B must agree on these signatures before parallel implementation.
 
@@ -35,7 +42,7 @@ Instants use UTC ISO 8601 strings. Operational dates use plant-local YYYY-MM-DD.
 A scheduled server job finds eligible overdue obligations; transaction creates one alert/outbox per approved recipient and stage, no duplicates. Worker claims pending deliveries safely, rechecks obligation before sending, uses provider idempotency where supported, logs failures and retries with bounds. On submission, resolve internal alerts and cancel unsent work; an already delivered message cannot be recalled. Scheduler runs independently of open browser. Monitor job heartbeat. Demo uses simulated clock and fake delivery adapter or approved isolated mail sink, real email/WhatsApp disabled. Configure deadlines, recipients, calendars and escalation only after approval. Do not send confidential details or access tokens in external messages. Links still require login. No WhatsApp Web automation; official approved platform only. Production exact-once delivery cannot be guaranteed across provider failures.
 
 ## Layout ownership
-`src/contracts/`, config and lockfile: foundation owner; `src/lib/data/`, `supabase/`, backend tests: A; `src/features/`, `src/components/`, `src/pages/`, UI tests: B. Integration owner edits routing/config only after review. `docs/` changes coordinated. No parallel schema migrations by different agents.
+Developer A owns dependencies, manifest, lockfile, shared configuration and `src/contracts/`. Both developers review contract changes before use. A owns `src/lib/data/`, `supabase/`, migrations and backend tests. Developer B owns route definitions and navigation in the frontend, `src/features/`, `src/components/`, `src/pages/` and UI tests. B tests routes with an injected adapter. The designated integration owner alone edits `src/main.tsx` to mount B's routes with A's adapter after both slices are reviewed. Coordinate documentation changes.
 
 ## Hosted development workflow (v1.1)
 - FND-01 runs without a hosted backend, credentials or container runtime. Pin compatible dependencies; CI builds and tests without secrets. A test-only fixture must never be a runtime fallback.

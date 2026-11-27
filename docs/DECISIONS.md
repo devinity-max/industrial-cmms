@@ -10,7 +10,7 @@ P01 React/TS/Vite + managed Supabase/PostgreSQL development backend; no local Do
 
 ## Foundation implementation decisions
 
-FND-01 records the requested React/TypeScript/Vite stack and native Windows setup. React and React DOM are the only direct runtime packages. The shell uses Vite's built-in JSX support. TypeScript stays on the 6.0 line supported by the selected ESLint integration. Supabase integration is a shared type contract until the backend slice. A and B's review of the [contract](ARCHITECTURE.md#fnd-01-contract-for-developer-review) is pending.
+FND-01 records the requested React/TypeScript/Vite stack and native Windows setup. React and React DOM are the only direct runtime packages. The shell uses Vite's built-in JSX support. TypeScript stays on the 6.0 line supported by the selected ESLint integration. Supabase integration is a shared type contract until the backend slice. A and B's review of the [contract](ARCHITECTURE.md#m1-contract-for-developer-review) is pending.
 
 ## Open questions (blocking only dependent work)
 
