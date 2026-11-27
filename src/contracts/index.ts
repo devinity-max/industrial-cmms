@@ -20,6 +20,17 @@ export interface SessionInfo {
   userId: string;
 }
 
+export type AuthState =
+  | { status: 'authenticated'; session: SessionInfo }
+  | { status: 'signed_out' }
+  | { status: 'expired' };
+
+export interface AssetListQuery {
+  cursor?: string;
+  filter?: string;
+  pageSize?: 10 | 25 | 50;
+}
+
 export interface AssetSummary {
   id: string;
   machineNumber: string;
@@ -31,6 +42,8 @@ export interface AssetSummary {
 
 export interface AssetDetail extends AssetSummary {
   qrToken: string;
+  /** Effective server decision for this asset. UI guidance only. */
+  capabilities: { canManageAsset: boolean };
 }
 
 export interface HistoryItem {
@@ -98,9 +111,16 @@ export interface CursorPage<T> {
 
 export interface CmmsAdapter {
   signIn(input: { identifier: string; password: string }): Promise<Result<SessionInfo>>;
-  listAssets(input: { page: number; filter?: string }): Promise<Result<readonly AssetSummary[]>>;
+  getAuthState(): Promise<Result<AuthState>>;
+  onAuthStateChange(listener: (state: Result<AuthState>) => void): () => void;
+  signOut(): Promise<Result<void>>;
+  listAssets(input: AssetListQuery): Promise<Result<CursorPage<AssetSummary>>>;
   getAssetByQr(qrToken: string): Promise<Result<AssetDetail>>;
   listHistory(input: { assetId: string; cursor?: string }): Promise<Result<CursorPage<HistoryItem>>>;
+}
+
+/** Provisional M2/M3 operations. Outside the M1 implementation contract. */
+export interface ProvisionalMaintenanceAdapter {
   getDailyObligation(input: {
     assetId: string;
     operationalDate: string;
