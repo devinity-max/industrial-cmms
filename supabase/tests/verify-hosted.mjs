@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { env } from 'node:process';
+import { stdin, stdout } from 'node:process';
+import { createInterface } from 'node:readline/promises';
 import { createClient } from '@supabase/supabase-js';
 
 // Explicit operator invocation only. No automatic dotenv loading or CI hook.
@@ -52,6 +54,8 @@ try {
   assert.equal((await value(viewer.rpc('m1_history', { asset: detail.id }))).items.length, 1);
   const page = await value(viewer.rpc('m1_assets', { page_size: 10 }));
   assert.equal(page.items.length, 10);
+  assert.equal(page.items[0].qrToken, qr(1));
+  assert.equal((await value(viewer.rpc('m1_asset', { token: page.items[0].qrToken }))).id, page.items[0].id);
   assert.ok(page.nextCursor);
   const args = { page_size: 10, bookmark: page.nextCursor };
   const last = await value(viewer.rpc('m1_assets', args));
@@ -67,6 +71,23 @@ try {
     .eq('id','00000000-0000-0000-0000-000000000000'), 'PGRST106');
   const current = await viewer.auth.getSession();
   assert.ok(current.data.session);
+  if (env.M1_TEST_DISABLE_VIEWER === '1') {
+    assert.ok(stdin.isTTY, 'Requires the operator at an interactive terminal');
+    const session = current.data.session;
+    // Capture once. These two requests use identical authorization, without SDK refresh.
+    const check = () => globalThis.fetch(url + '/rest/v1/rpc/m1_assets', {
+      method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json' }, body: '{}', cache: 'no-store', redirect: 'error',
+    });
+    assert.equal((await check()).status, 200);
+    const terminal = createInterface({ input: stdin, output: stdout });
+    try { await terminal.question('Disable only the approved fixture viewer profile, commit, then press Enter. '); }
+    finally { terminal.close(); }
+    const response = await check();
+    assert.ok(Date.now() < session.expires_at * 1000, 'JWT expired during test; repeat with a fresh login');
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).code, '42501');
+  }
   const revoked = await viewer.auth.signOut({ scope: 'local' });
   assert.ok(!revoked.error, 'Fixture logout failed');
   assert.equal((await viewer.auth.getSession()).data.session, null);

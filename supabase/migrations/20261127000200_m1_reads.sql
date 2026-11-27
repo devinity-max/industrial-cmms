@@ -9,7 +9,7 @@ end $$;
 
 create function cmms.summary(a cmms.assets, department text) returns jsonb
 language sql immutable set search_path = '' as $$
-  select jsonb_build_object('id', a.id, 'machineNumber', a.machine_number, 'name', a.name,
+  select jsonb_build_object('id', a.id, 'qrToken', a.qr_token, 'machineNumber', a.machine_number, 'name', a.name,
     'department', department, 'displayStatus', a.display_status)
 $$;
 
@@ -18,7 +18,7 @@ language plpgsql stable security invoker set search_path = '' as $$
 declare detail jsonb;
 begin
   perform public.m1_user();
-  select cmms.summary(a,d.name) || jsonb_build_object('qrToken', a.qr_token, 'capabilities',
+  select cmms.summary(a,d.name) || jsonb_build_object('capabilities',
     jsonb_build_object('canManageAsset', exists (select from cmms.memberships m
       where m.role = 'admin' and (m.asset_id = a.id or m.plant_id = a.plant_id))))
   into detail from cmms.assets a join cmms.departments d on d.id = a.department_id
@@ -69,6 +69,7 @@ declare
   subject uuid := public.m1_user();
   query jsonb := jsonb_build_array('history',asset);
   after_id uuid;
+  after_time timestamptz;
   result jsonb;
 begin
   if not exists (select from cmms.assets where id = asset) then
@@ -78,17 +79,18 @@ begin
     raise sqlstate '22023' using message = 'Invalid cursor';
   end if;
   if bookmark is not null then
-    select a.id into after_id from cmms.history a where a.asset_id = asset
+    select a.occurred_at,a.id into after_time,after_id from cmms.history a where a.asset_id = asset
       and cmms.bookmark(a.page_nonce,subject,query) = bookmark;
     if after_id is null then raise sqlstate '22023' using message = 'Invalid cursor'; end if;
   end if;
   with page as (
-    select a.id, jsonb_build_object('id',a.id,'assetId',a.asset_id,'kind',a.kind,'occurredAt',a.occurred_at,
+    select a.occurred_at,a.id, jsonb_build_object('id',a.id,'assetId',a.asset_id,'kind',a.kind,'occurredAt',a.occurred_at,
       'summary',a.summary,'actorDisplay',a.actor_display,'version',a.version) as item, cmms.bookmark(a.page_nonce,subject,query) as cursor
-    from cmms.history a where a.asset_id = asset and (after_id is null or a.id > after_id)
-    order by a.id limit 25 + 1
-  ), numbered as (select *, row_number() over (order by id) as n from page)
-  select jsonb_build_object('items', coalesce(jsonb_agg(item order by id) filter (where n <= 25), '[]'::jsonb),
+    from cmms.history a where a.asset_id = asset and
+      (after_id is null or (a.occurred_at,a.id) < (after_time,after_id))
+    order by a.occurred_at desc,a.id desc limit 26
+  ), numbered as (select *, row_number() over (order by occurred_at desc,id desc) as n from page)
+  select jsonb_build_object('items', coalesce(jsonb_agg(item order by n) filter (where n <= 25), '[]'::jsonb),
     'nextCursor', case when count(*) > 25 then max(cursor) filter (where n = 25) end)
   into result from numbered;
   return result;

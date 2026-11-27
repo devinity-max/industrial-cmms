@@ -50,7 +50,7 @@ create table cmms.history (
   version integer not null check (version > 0),
   page_nonce uuid not null default gen_random_uuid()
 );
-create index on cmms.history(asset_id, id);
+create index on cmms.history(asset_id, occurred_at desc, id desc);
 
 create function cmms.preserve_asset_identity() returns trigger
 language plpgsql set search_path = '' as $$

@@ -21,5 +21,5 @@ export function createClient<D extends { public: { Functions: Record<string, { A
     dispose(): Promise<void>;
   };
   rpc<K extends keyof D['public']['Functions']>(name: K, args: D['public']['Functions'][K]['Args']):
-    PromiseLike<{ data: D['public']['Functions'][K]['Returns'] | null; error: { code: string } | null; status: number }>;
+    PromiseLike<{ data: unknown; error: { code: string } | null; status: number }>;
 };

@@ -61,3 +61,9 @@ Foundation CI must not need hosted credentials. Run database and RLS integration
 ## FND-02 contract verification
 
 27 November 2026, native Windows, foundation baseline `e41b031`. `npm.cmd run check` passed lint and TypeScript checks, both Vitest tests and the Vite build. TypeScript verifies the public session keys, bounded page sizes and separation of M1 from provisional operations. Runtime auth, scoped authorization and pagination tests depend on the M1 implementation. Hosted CI and human contract review are pending.
+
+## M1-A.1 local evidence
+
+27 November 2026, native Windows, baseline 3bb5314. Developers A and B approved moving the QR locator to AssetSummary. Developer A confirmed both M1 migrations were unapplied before editing. `npm.cmd run check` passed lint, strict type checking, 13 tests and the build. The focused `npm.cmd test -- src/lib/data/supabase.test.ts` passed 11 tests with intercepted HTTP. `node --check supabase/tests/verify-hosted.mjs` and `git diff --check` passed. Human SQL review is pending.
+
+The SQL tie-boundary and grant assertions, hosted directory and same-JWT deactivation checks, and integrated two-browser-tab behavior remain unexecuted. Follow the [isolated test procedure](../supabase/migrations/README.md) after separate target approval.

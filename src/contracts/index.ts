@@ -33,6 +33,7 @@ export interface AssetListQuery {
 
 export interface AssetSummary {
   id: string;
+  qrToken: string;
   machineNumber: string;
   name: string;
   department: string;
@@ -41,7 +42,6 @@ export interface AssetSummary {
 }
 
 export interface AssetDetail extends AssetSummary {
-  qrToken: string;
   /** Effective server decision for this asset. UI guidance only. */
   capabilities: { canManageAsset: boolean };
 }

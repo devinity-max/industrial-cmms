@@ -24,9 +24,34 @@ begin
   end if;
 end $$;
 
+-- Put an equal-timestamp group across the page boundary. The smallest UUID
+-- has the latest time so ordering only by UUID also fails this check.
+insert into cmms.history(id,asset_id,kind,occurred_at,summary,actor_display,version)
+select ('40000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
+  '20000000-0000-4000-8000-000000000001','test',
+  case when n = 1 then timestamptz '2100-01-02 UTC' else timestamptz '2100-01-01 UTC' end,
+  'Synthetic history ' || n,'Fixture',1
+from generate_series(1,27) n;
+
 select set_config('request.jwt.claim.sub', (select id::text from auth.users
   where email='m1-viewer@example.invalid'), true);
 set local role authenticated;
+do $$
+declare
+  asset constant uuid := '20000000-0000-4000-8000-000000000001';
+  first_page jsonb := public.m1_history(asset);
+  last_page jsonb := public.m1_history(asset, first_page->>'nextCursor');
+  expected jsonb;
+  actual jsonb;
+begin
+  select jsonb_agg(id order by occurred_at desc,id desc) into expected from cmms.history where asset_id=asset;
+  select jsonb_agg(item->'id' order by pos) into actual from
+    jsonb_array_elements((first_page->'items') || (last_page->'items')) with ordinality r(item,pos);
+  if actual is distinct from expected or jsonb_array_length(first_page->'items') <> 25
+     or first_page->>'nextCursor' is null or last_page->>'nextCursor' is not null then
+    raise exception 'Chronological history continuation mismatch';
+  end if;
+end $$;
 do $$
 begin
   if (select count(*) from cmms.assets) <> 11 then raise exception 'Viewer scope mismatch'; end if;
