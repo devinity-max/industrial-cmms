@@ -1,4 +1,5 @@
 import { createClient } from './sdk.mjs';
+import { asset, detail, history, page, uuid } from './responses';
 import type { ApiErrorCode, AssetDetail, AssetSummary, AuthState, CmmsAdapter, CursorPage, HistoryItem, Result } from '../../contracts';
 
 type Rpc<Args, Returns> = { Args: Args; Returns: Returns };
@@ -36,6 +37,8 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
   const listeners = new Set<Listener>();
   let generation = 0;
   let disposed = false;
+  let verifiedUser: string | undefined;
+  let pendingLoginEpoch: string | undefined;
 
   function connect(epoch: string) {
     const storageKey = prefix + ':' + epoch + ':session';
@@ -51,9 +54,12 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
       // Leave the GoTrue notification callback before invoking another auth method.
       if (event === 'SIGNED_OUT' && epoch === currentEpoch()) {
         generation++;
+        verifiedUser = undefined;
         emit(ok({ status: 'expired' }));
       }
-      setTimeout(() => { if (isCurrent(epoch)) void notifyVerified(); }, 0);
+      setTimeout(() => {
+        if (listeners.size && isCurrent(epoch) && !localStorage.getItem(storageKey + ':pending')) void notifyVerified();
+      }, 0);
     }).data.subscription;
     return { epoch, client, storageKey, subscription };
   }
@@ -70,17 +76,20 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
     if (!disposed && connection.epoch !== currentEpoch()) {
       disconnect();
       generation++;
+      verifiedUser = undefined;
       connection = connect(currentEpoch());
       emit(signedOut());
     }
   }
   function rotate() {
     const previous = connection.storageKey;
-    localStorage.setItem(epochKey, crypto.randomUUID());
+    const nextEpoch = crypto.randomUUID();
+    localStorage.setItem(epochKey, nextEpoch);
     localStorage.removeItem(previous);
     localStorage.removeItem(previous + ':used');
     localStorage.removeItem(previous + ':pending');
     sync();
+    return nextEpoch;
   }
   function storageChanged(event: StorageEvent) {
     if (event.key === epochKey || event.key === null) sync();
@@ -97,16 +106,18 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
     } catch { return failure('TEMPORARY_FAILURE'); }
   }
 
-  type Reply<T> = { data: T | null; error: { code: string } | null; status: number };
-  async function read<T>(request: (client: typeof connection.client) => PromiseLike<Reply<T>>): Promise<Result<T>> {
+  type Reply = { data: unknown; error: { code: string } | null; status: number };
+  async function read<T>(request: (client: typeof connection.client) => PromiseLike<Reply>,
+    valid: (value: unknown) => value is T, identityProbe = false): Promise<Result<T>> {
     sync();
     const { epoch, client } = connection;
     const revision = generation;
+    const subject = verifiedUser;
     try {
-      if (!isCurrent(epoch)) return failure('UNAUTHENTICATED');
+      if (!isCurrent(epoch) || (!identityProbe && !subject)) return failure('UNAUTHENTICATED');
       const { data, error, status } = await request(client);
-      if (!isCurrent(epoch) || revision !== generation) return failure('UNAUTHENTICATED');
-      if (!error && data !== null) return ok(data);
+      if (!isCurrent(epoch) || revision !== generation || (!identityProbe && subject !== verifiedUser)) return failure('UNAUTHENTICATED');
+      if (!error && status >= 200 && status < 300 && valid(data)) return ok(data);
       if (status === 401) return failure('UNAUTHENTICATED');
       if (error?.code === '42501') return failure('NOT_FOUND_OR_DENIED');
       if (error?.code === '22023' || error?.code === '22P02') return failure('VALIDATION');
@@ -116,17 +127,36 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
   async function getAuthState(): Promise<Result<AuthState>> {
     sync();
     const { client, epoch, storageKey } = connection;
+    const revision = generation;
     try {
       const { data, error } = await client.auth.getSession();
       if (!isCurrent(epoch)) return signedOut();
+      if (error || !data.session) verifiedUser = undefined;
       if (error && (!error.status || error.status >= 500 || error.status === 429)) return failure('TEMPORARY_FAILURE');
       if (error || !data.session) {
         return ok({ status: localStorage.getItem(storageKey + ':used') ? 'expired' : 'signed_out' });
       }
-      const user = await read(c => c.rpc('m1_user', {}));
-      if (!user.ok) return user;
+      const user = await read(c => c.rpc('m1_user', {}), uuid, true);
+      if (!isCurrent(epoch) || revision !== generation) return signedOut();
+      if (!user.ok) {
+        verifiedUser = undefined;
+        if (user.error.code === 'NOT_FOUND_OR_DENIED') {
+          rotate();
+          const revoked = await revoke(data.session.access_token);
+          if (!revoked.ok) return revoked;
+        }
+        return user;
+      }
+      if (user.data !== data.session.user.id) {
+        verifiedUser = undefined;
+        return failure('TEMPORARY_FAILURE');
+      }
+      verifiedUser = user.data;
       return ok({ status: 'authenticated', session: { userId: user.data } });
-    } catch { return failure('TEMPORARY_FAILURE'); }
+    } catch {
+      if (isCurrent(epoch)) verifiedUser = undefined;
+      return failure('TEMPORARY_FAILURE');
+    }
   }
   let notification = 0;
   async function notifyVerified(target?: Listener) {
@@ -148,9 +178,12 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
     },
     async signIn({ identifier, password }) {
       sync();
-      if (localStorage.getItem(connection.storageKey)) return failure('CONFLICT');
-      rotate();
+      if (disposed) return failure('UNAUTHENTICATED');
+      if (localStorage.getItem(connection.storageKey) || pendingLoginEpoch === connection.epoch) return failure('CONFLICT');
+      const loginEpoch = rotate();
+      if (!isCurrent(loginEpoch)) return failure('UNAUTHENTICATED');
       const { client, epoch, storageKey } = connection;
+      pendingLoginEpoch = epoch;
       localStorage.setItem(storageKey + ':pending', '1');
       try {
         const { data, error } = await client.auth.signInWithPassword({ email: identifier, password });
@@ -159,14 +192,22 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
           return failure('UNAUTHENTICATED');
         }
         if (error) return failure(error.code === 'invalid_credentials' ? 'UNAUTHENTICATED' : 'TEMPORARY_FAILURE');
+        if (!uuid(data.session?.user.id)) return failure('TEMPORARY_FAILURE');
         localStorage.setItem(storageKey + ':used', '1');
         const state = await getAuthState();
         if (!state.ok) return state;
-        return state.data.status === 'authenticated' ? ok(state.data.session) : failure('UNAUTHENTICATED');
+        return isCurrent(epoch) && state.data.status === 'authenticated' &&
+          state.data.session.userId === data.session.user.id && verifiedUser === data.session.user.id
+          ? ok(state.data.session) : failure('UNAUTHENTICATED');
       } catch { return failure('TEMPORARY_FAILURE'); }
-      finally { localStorage.removeItem(storageKey + ':pending'); }
+      finally {
+        if (pendingLoginEpoch === epoch) pendingLoginEpoch = undefined;
+        localStorage.removeItem(storageKey + ':pending');
+        if (listeners.size && isCurrent(epoch)) void notifyVerified();
+      }
     },
     async signOut() {
+      if (disposed) return failure('UNAUTHENTICATED');
       sync();
       // Capture only for the revocation request. Fence pending SDK writes before awaiting I/O.
       const stored = localStorage.getItem(connection.storageKey);
@@ -181,9 +222,12 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
     },
     listAssets: ({ cursor, filter, pageSize }) => read(c => c.rpc('m1_assets', {
       page_size: pageSize ?? 25, filter: filter ?? '', bookmark: cursor ?? null,
-    })),
-    getAssetByQr: token => read(c => c.rpc('m1_asset', { token })),
-    listHistory: ({ assetId, cursor }) => read(c => c.rpc('m1_history', { asset: assetId, bookmark: cursor ?? null })),
+    }), (value): value is CursorPage<AssetSummary> => page(value, pageSize ?? 25, asset)),
+    getAssetByQr: token => read(c => c.rpc('m1_asset', { token }),
+      (value): value is AssetDetail => detail(value) && value.qrToken.toLowerCase() === token.toLowerCase()),
+    listHistory: ({ assetId, cursor }) => read(c => c.rpc('m1_history', { asset: assetId, bookmark: cursor ?? null }),
+      (value): value is CursorPage<HistoryItem> => page(value, 25, history) &&
+        value.items.every(item => item.assetId.toLowerCase() === assetId.toLowerCase())),
     dispose() {
       disposed = true;
       disconnect();

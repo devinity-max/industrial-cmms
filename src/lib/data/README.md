@@ -11,3 +11,11 @@ The pinned SDK's WebAuthn declarations conflict with TypeScript 6 DOM declaratio
 ## M1-A local verification, 27 November 2026
 
 Windows checkout from main baseline 36ffa8f. Developer A approved the pinned MIT SDK 2.119.2. The first typecheck failed on the vendor WebAuthn DOM declarations and Node globals. After isolating the SDK import, `npm.cmd ci --offline` passed, `npm.cmd run check` passed lint, strict typecheck, six tests and the shell build, and `npm.cmd audit` reported zero known vulnerabilities. The SDK and its new transitive packages declare MIT or 0BSD licenses. `node --check supabase/tests/verify-hosted.mjs` verified runner syntax. The adapter also bundled independently with Vite (46 modules, in memory). No local PostgreSQL executable was found and no hosted target was authorized. Migrations, real JWT/RLS enforcement, fixture setup, and the hosted runner await Developer A's SQL review and target approval.
+
+## M1-A.1 integration changes
+
+Both developers approved the required qrToken on AssetSummary. Pass the selected authorized row's qrToken to getAssetByQr. AssetDetail inherits the field. Each lookup still requires an active profile and current machine or plant membership. History pages are newest first by occurredAt, then descending UUID for ties.
+
+A definitive profile denial clears the rejected login locally and attempts provider revocation. A new account can sign in immediately. A temporary verification failure locks reads. Retry getAuthState or call signOut before switching accounts. An uncertain revocation returns TEMPORARY_FAILURE. Restoration compares the SDK session user with the validated m1_user UUID. Login completion checks the initiating epoch and account again before returning success.
+
+Reviewed the narrow SDK declaration against installed auth-js 2.119.2 password login, getSession, subscription/unsubscribe and async dispose methods. PostgREST data crosses this boundary as unknown. Identity, directory, detail and history responses must pass runtime checks before being returned.
