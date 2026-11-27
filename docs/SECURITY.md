@@ -18,3 +18,17 @@ Production additionally requires company-owned approved domain/accounts, environ
 Incident response: disable affected access/credentials, stop suspect deployment or jobs, preserve evidence, notify agreed company incident owner, assess exposure, restore/redeploy from known-good state, record corrective actions. Agree retention and lawful handling with company. No production secrets in issue trackers or agent transcripts.
 
 Cloud development: use separate project identities and credentials, no real company records in dev. Restrict administrative dashboard access, use individual accounts and MFA, keep server secrets out of browser bundles and agent prompts. No remote resets. Only Developer A applies approved reviewed migrations; validate the target before each mutation.
+
+## Synthetic development credential incident
+
+**OPEN — remediation verification pending.** Developer A confirmed a Supabase privileged secret API key for the isolated synthetic CMMS development project appeared in the browser address bar in a shared screenshot. Revocation was recommended. Its completion and effectiveness have yet to be confirmed.
+
+| Follow-up | Reported status |
+|---|---|
+| Verify exposed key revocation and replacement administrative key deletion | Pending verification |
+| Review API access logs and Auth audit logs | Pending |
+| Scan repository and Git history for credentials | Pending |
+| Inspect dependent configurations | Pending |
+| Investigate unauthorized activity | Pending. No evidence currently establishes unauthorized use. Whether misuse occurred remains undetermined. |
+
+The subsequent standard hosted security suite passed with the publishable key. Close the incident only when the owner records the remediation and investigation outcomes. Keep credentials, suffixes, screenshots containing credentials, tokens and sensitive logs out of this record.
