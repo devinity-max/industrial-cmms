@@ -19,3 +19,9 @@ Both developers approved the required qrToken on AssetSummary. Pass the selected
 A definitive profile denial clears the rejected login locally and attempts provider revocation. A new account can sign in immediately. A temporary verification failure locks reads. Retry getAuthState or call signOut before switching accounts. An uncertain revocation returns TEMPORARY_FAILURE. Restoration compares the SDK session user with the validated m1_user UUID. Login completion checks the initiating epoch and account again before returning success.
 
 Reviewed the narrow SDK declaration against installed auth-js 2.119.2 password login, getSession, subscription/unsubscribe and async dispose methods. PostgREST data crosses this boundary as unknown. Identity, directory, detail and history responses must pass runtime checks before being returned.
+
+## Integration acceptance
+
+Developer B owns the route definitions. The integration owner wires the real adapter in src/main.tsx after review. For each of the two synthetic robot labels, exercise signed-out scan, password sign-in, same-origin return to the requested machine, and directory-to-detail navigation. Verify scoped history, generic missing/denied handling and capability display per asset. Keep fixture adapters restricted to tests.
+
+Real two-tab verification remains pending. With a protected read outstanding in tab B, sign out or switch accounts in tab A. Confirm that B clears the previous identity's data and ignores the delayed response. Repeat with browser back and tab resume. Record browser/device, scenario and outcome in docs/TESTING.md.

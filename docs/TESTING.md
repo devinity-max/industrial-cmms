@@ -67,3 +67,28 @@ Foundation CI must not need hosted credentials. Run database and RLS integration
 27 November 2026, native Windows, baseline 3bb5314. Developers A and B approved moving the QR locator to AssetSummary. Developer A confirmed both M1 migrations were unapplied before editing. `npm.cmd run check` passed lint, strict type checking, 13 tests and the build. The focused `npm.cmd test -- src/lib/data/supabase.test.ts` passed 11 tests with intercepted HTTP. `node --check supabase/tests/verify-hosted.mjs` and `git diff --check` passed. Human SQL review is pending.
 
 The SQL tie-boundary and grant assertions, hosted directory and same-JWT deactivation checks, and integrated two-browser-tab behavior remain unexecuted. Follow the [isolated test procedure](../supabase/migrations/README.md) after separate target approval.
+
+## M1-A.3 backend acceptance
+
+**Hosted evidence source.** Developer A's M1-A.3 handoff for the isolated synthetic project cmms-dev, reference `fgawjraoekdnhdbqqrvm`. The assistant did not access the hosted project. The intended SQL source commit was `3b2559df821bbfd1917e14f94bfe771ab60df857`. Exact executed SQL hashes were not independently verified. No hosted execution time was supplied.
+
+| Verification | Developer A's reported observation |
+|---|---|
+| Migrations | Developer A reported success for each complete migration submission via the Supabase SQL Editor, in this order: `20261127000100_m1_storage.sql` and `20261127000200_m1_reads.sql`. Both are immutable. |
+| Database objects | Six application tables created, all six with RLS enabled. Four public RPC functions verified as security invoker. |
+| Privileges | Anonymous RPC execution denied. All 24 checked authenticated table write privilege restrictions were confirmed. The private-schema REST probe checks schema isolation separately. |
+| Fixtures | Four synthetic Auth accounts provisioned, twelve synthetic assets and twelve history records loaded. The Viewer account was replaced after its password was forgotten. |
+| Database and API checks | SQL constraint tests executed. The replacement Viewer authenticated during the standard hosted security runner, which exited successfully using the publishable key. |
+
+**Local evidence.** During the 28 November 2026 documentation handoff, the assistant ran `npm.cmd run check` on native Windows. Lint and strict type checking passed, Vitest passed 13 of 13 tests across three files, and Vite built 16 modules. Real two-tab browser verification remains pending frontend integration. CLI migration-history reconciliation is a separate prerequisite for future CLI applies.
+
+**Constraint evidence.** Developer A reports the constraint-test screenshot showed no assertion errors and included the final ROLLBACK statement. Full-script execution and the post-test rollback outcome remain unconfirmed.
+
+**Same-JWT evidence.** Developer A reported completing the deactivation test. Detailed evidence is pending for each of the following observations. The standard hosted runner pass stands independently.
+
+- Successful initial machine read with the JWT selected for this test.
+- HTTP 403 / PostgreSQL 42501 after disabling the profile using the same still-unexpired JWT.
+- Restoration of the replacement Viewer profile.
+- Successful machine-data read after restoration.
+
+The privileged-key incident remains open. See the [incident record](SECURITY.md#synthetic-development-credential-incident).
