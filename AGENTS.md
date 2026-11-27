@@ -1,0 +1,15 @@
+# Working agreement for AI agents and developers
+Read README.md, docs/REQUIREMENTS.md, docs/ARCHITECTURE.md, docs/SECURITY.md and the current task before editing. Source precedence: latest explicit client confirmations > supplier presentation > approved workflow samples > proposed decisions. Do not treat provisional examples as business rules. Ask the human owner for approval of blocking decisions; continue only independent work.
+
+## Hard constraints
+- Native Windows development with fictional records only; hosted development backend permitted only after explicit human approval. No Docker/WSL prerequisite on developer PCs. Do not upload company source documents or secrets to external services. No public machine access, no public signup, no shared admin credentials.
+- Do not connect to robots, PLCs, safety interlocks or operational technology. A record submission is not a safety certification or authorization to operate equipment.
+- All reads and writes require server/database authorization by role and machine scope. Never trust client role claims, hidden buttons, machine ID, timestamps or user ID supplied by clients. No service-role key in browser code. No bypass policies or anonymous machine reads.
+- No deployment, purchases, remote migrations, new provider accounts or real notifications without explicit approval. Never run remote reset or destructive commands on shared databases. Only Developer A may apply reviewed migrations to the verified synthetic development project; no automatic CI writes to shared projects. Do not use production credentials. Never log passwords, tokens or confidential payloads.
+- No permanent deletion of maintenance records through the application; preserve revisions and audit trail. Validate inputs and use transactions and safe retries. Never claim a save succeeded before persistence is confirmed.
+- Do not introduce unapproved dependencies or broad refactors. Pin dependency versions via lockfiles; check licenses and advisories. Do not disable security checks to pass tests.
+
+## Collaboration and credits
+One private repo, short-lived feature branches, main as integration baseline. No direct pushes to main by agents. Use PRs, other developer review, passing tests and a human merge. Enforced protection for private GitHub repos may require a paid plan; do not assume free-tier enforcement. If unavailable, procedural controls for synthetic-data dev only; resolve enforcement before production. One owner for package manifest, lockfile, shared contracts and migrations at a time. Never overwrite another branch or blindly resolve conflicts. No force-push, secrets or generated build outputs in commits. Keep changes narrow. Report exact commands and outcomes, not invented test results. If unable to run a test, state why. Stop at task acceptance boundary.
+
+At end of every session: list changed files, design decisions, tests run and results, blockers, security concerns, and next dependency. Update the relevant documentation and open a PR only if explicitly permitted. Do not claim code is production-safe from AI review alone.
