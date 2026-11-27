@@ -8,7 +8,12 @@
 ## Provisional engineering decisions
 P01 React/TS/Vite + managed Supabase/PostgreSQL development backend; no local Docker/WSL; P02 one private repository, trunk + feature branches; P03 demo individual provisioned accounts; P04 use stable opaque QR mapping and display actual machine number on label; P05 demo one daily obligation per machine/date and test-only reminders; P06 in-app + simulated email first, WhatsApp optional until client clarifies requirement; P07 local browser first, no PWA dependency; P08 user owns backend, brother provisionally owns frontend. These are proposals, not customer approval. Review before coding relevant parts.
 
+## Foundation implementation decisions
+
+FND-01 records the requested React/TypeScript/Vite stack and native Windows setup. React and React DOM are the only direct runtime packages. The shell uses Vite's built-in JSX support. TypeScript stays on the 6.0 line supported by the selected ESLint integration. Supabase integration is a shared type contract until the backend slice. A and B's review of the [contract](ARCHITECTURE.md#fnd-01-contract-for-developer-review) is pending.
+
 ## Open questions (blocking only dependent work)
+
 | ID | Decision/input | Blocks |
 |---|---|---|
 | Q01 | Machine numbers, approved master data/photos, ID uniqueness plant-wide or company-wide | real profiles/labels |
