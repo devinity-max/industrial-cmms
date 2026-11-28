@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import type { AuthState, CmmsAdapter, Result } from '../contracts';
+import type { AuthState, CmmsAdapter, MaintenanceAdapter, Result } from '../contracts';
 import { resolveRoute } from '../features/machines/routes';
 import { Directory, MachineProfile } from './MachinePages';
 import './machines.css';
@@ -8,7 +8,7 @@ import './machines.css';
 const unavailable: Result<AuthState> = { ok: false, error: {
   code: 'TEMPORARY_FAILURE', message: 'Unable to verify your session.', requestId: '',
 } };
-type Props = { adapter: CmmsAdapter };
+type Props = { adapter: CmmsAdapter & MaintenanceAdapter };
 
 export function MachineWorkspace({ adapter }: Props) {
   const [snapshot, setSnapshot] = useState<Result<AuthState> | null>(null);
@@ -78,7 +78,7 @@ export function MachineWorkspace({ adapter }: Props) {
       : snapshot.data.status !== 'authenticated' ? <Login adapter={adapter} verify={verify}
         expired={snapshot.data.status === 'expired'} deepLink={route.kind === 'machine'} />
       : <div key={boundary.current}>{route.kind === 'directory' ? <Directory adapter={adapter}/>
-        : route.kind === 'machine' ? <MachineProfile adapter={adapter} token={route.token}/>
+        : route.kind === 'machine' ? <MachineProfile key={route.token} adapter={adapter} token={route.token} userId={snapshot.data.session.userId}/>
         : <><h1>Page unavailable</h1><a href="/machines">Open machine directory</a></>}</div>}
   </main></div>;
 }

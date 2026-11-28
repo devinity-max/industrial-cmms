@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import type { AuthState, CmmsAdapter, Result } from '../../../contracts';
+import type { AuthState, CmmsAdapter, MaintenanceAdapter, Result } from '../../../contracts';
 import { MachineWorkspace } from '../../../pages/MachineWorkspace';
 import '../../../styles.css';
 
@@ -19,7 +19,10 @@ function snapshot(): Result<AuthState> {
     : { status: sessionStorage.getItem('fixture') === 'expired' ? 'expired' : 'signed_out' });
 }
 const change = () => window.dispatchEvent(new Event('fixture-auth'));
-const adapter: CmmsAdapter = {
+const adapter: CmmsAdapter & MaintenanceAdapter = {
+  async getDailyObligation() { return ok(null); },
+  async getDailyRevision() { return unavailable(); },
+  async submitDaily() { return unavailable(); },
   async getAuthState() { return snapshot(); },
   onAuthStateChange(listener) {
     const publish = () => listener(snapshot());

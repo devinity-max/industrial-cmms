@@ -51,6 +51,16 @@ The proposed forward migration follows the two immutable M1 migrations. It intro
 
 ## Verification boundary
 
+### M2-B machine profile handoff
+
+The machine profile includes the ledger below the machine details. Choose an operational date and enter the exact shift key when the obligation is shift-specific. The adapter accepts an explicit date and key. Plant timezone resolution, shift discovery and calendar views would require further contract review.
+
+The form uses the existing adapter instance and the authenticated user's ID. A confirmed submission refreshes the obligation and machine history. An uncertain response locks the attempted payload for an identical retry. A conflict displays the draft and fetches the latest revision for comparison. The user explicitly discards the stale draft before starting a correction from the current record. Previous revisions are browsable by version and read-only. Drafts live in memory inside the protected profile and are cleared when the workspace locks, including on tab hiding.
+
+Consolidated QA is deferred by Developer A. The M2-B build, type checking, visual layout, device behavior and runtime flows are unverified. Later coverage includes all three daily states, scoped Viewer/Admin access, multi-activity submissions, stable retries, competing corrections, revision navigation, session changes during writes and mobile touch controls. Hosted use requires the separately reviewed M2 migration and a configured synthetic obligation. The following results are historical M2-A evidence.
+
+### M2-A local evidence
+
 The offline Vitest cases use the installed Supabase SDK with an intercepted transport. They cover the public types, configured and unconfigured days, receipt and version matching, repeat-request serialization, error handling and stale responses after logout. They do not exercise PostgreSQL.
 
 On 28 November 2026, `npm.cmd run check` exited 0 on native Windows. ESLint and strict TypeScript passed, Vitest passed 26/26 tests across four files, and Vite built 66 modules. The focused command `npm.cmd test -- src/contracts/index.test.ts src/lib/data/supabase.test.ts` passed 20/20 tests across two files.

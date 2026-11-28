@@ -1,19 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CmmsAdapter, Result } from '../contracts';
-
-type Read<T> = () => Promise<Result<T>>;
-function useRead<T>(request: Read<T>) {
-  const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<Result<T> | null>(null);
-  useEffect(() => {
-    let active = true;
-    void request().then(value => { if (active) setResult(value); }).catch(() => {
-      if (active) setResult({ ok: false, error: { code: 'TEMPORARY_FAILURE', message: 'Connection unavailable.', requestId: '' } });
-    });
-    return () => { active = false; };
-  }, [request, attempt]);
-  return { result, retry: () => { setResult(null); setAttempt(n => n + 1); } };
-}
+import type { CmmsAdapter, MaintenanceAdapter } from '../contracts';
+import { useRead } from '../features/machines/useRead';
+import { DailyLedger } from '../features/maintenance/DailyLedger';
 
 function ReadMessage({ code, retry }: { code?: string; retry: () => void }) {
   if (!code) return <p role="status">Loading records…</p>;
@@ -67,11 +55,14 @@ function AssetRows({ filter, adapter, pages }: { filter: string; adapter: CmmsAd
     <Pager pages={pages} next={result.data.nextCursor} /></>;
 }
 
-export function MachineProfile({ token, adapter }: { token: string; adapter: CmmsAdapter }) {
-  const [historyError, setHistoryError] = useState<string | null>(null);
+export function MachineProfile({ token, adapter, userId }: {
+  token: string; adapter: CmmsAdapter & MaintenanceAdapter; userId: string;
+}) {
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const request = useCallback(() => adapter.getAssetByQr(token), [adapter, token]);
   const { result, retry } = useRead(request);
-  if (historyError) return <ReadMessage code={historyError} retry={() => { setHistoryError(null); retry(); }} />;
+  if (profileError) return <ReadMessage code={profileError} retry={() => { setProfileError(null); retry(); }} />;
   if (!result?.ok) return <ReadMessage {...(result && { code: result.error.code })} retry={retry} />;
   const machine = result.data;
   return <><a href="/machines">← Machine directory</a><h1>{machine.name}</h1>
@@ -80,7 +71,9 @@ export function MachineProfile({ token, adapter }: { token: string; adapter: Cmm
       ['Recorded status', machine.displayStatus === 'unknown' ? 'Unknown' : machine.displayStatus],
       ['Your access', machine.capabilities.canManageAsset ? 'Machine admin' : 'View only'],
     ].map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
-    <div className="mc-panel"><h2>Machine history</h2><History adapter={adapter} assetId={machine.id} onFailure={setHistoryError} /></div></>;
+    <DailyLedger key={machine.id} adapter={adapter} machine={machine} userId={userId}
+      onRestricted={setProfileError} onSaved={() => setHistoryRefresh(n => n + 1)} />
+    <div className="mc-panel"><h2>Machine history</h2><History key={historyRefresh} adapter={adapter} assetId={machine.id} onFailure={setProfileError} /></div></>;
 }
 type HistoryProps = { adapter: CmmsAdapter; assetId: string; onFailure: (code: string) => void };
 function History(props: HistoryProps) {
