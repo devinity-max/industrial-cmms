@@ -7,9 +7,12 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createServer, preview } from 'vite';
 import { interceptProject } from './transport.mjs';
+import { verifyDeactivation } from '../../supabase/tests/same-jwt.mjs';
 
 const { chromium } = createRequire(import.meta.url)(env.CMMS_PLAYWRIGHT || 'playwright');
 const live = argv.includes('--hosted');
+const sameJwt = argv.includes('--same-jwt');
+assert.ok(!sameJwt || live, '--same-jwt requires --hosted');
 const invalid = argv.includes('--invalid-config') || argv.includes('--missing-config');
 const project = 'https://fgawjraoekdnhdbqqrvm.supabase.co';
 const qr = n => '30000000-0000-4000-8000-' + String(n).padStart(12, '0');
@@ -22,14 +25,40 @@ const built = argv.includes('--preview');
 const server = built ? await preview({preview:address, logLevel:'error'}) :
   await createServer({server:address, logLevel:'error'});
 let browser;
+let tab;
 try {
   if (!built) await server.listen();
   const origin = 'http://127.0.0.1:5184';
   browser = await chromium.launch({ channel:'msedge', headless:!live });
   const context = await browser.newContext({ serviceWorkers:'block' });
   if (!live) await interceptProject(context,project,qr);
-  const tab = await context.newPage();
-  if (invalid) {
+  tab = await context.newPage();
+  if (sameJwt) {
+    // Freeze only the directory read inside this document. Credentials, storage,
+    // Auth request bodies and request headers are never inspected by the runner.
+    await tab.addInitScript(endpoint => {
+      const send = window.fetch.bind(window);
+      let fixed;
+      window.fetch = (input, init) => {
+        if (!fixed && (input.url ?? String(input)) === endpoint && init?.method === 'POST') {
+          fixed = new window.Request(input, { ...init, cache:'no-store', redirect:'error' });
+        }
+        return send(input, init);
+      };
+      window.repeatViewerRead = async () => {
+        if (!fixed) throw new Error('No directory read is available');
+        const response = await send(fixed.clone());
+        const data = await response.json();
+        return { status:response.status, hasRows:data.items?.[0]?.machineNumber === 'DEMO-ROB-001',
+          code:data.code === '42501' ? '42501' : undefined };
+      };
+    }, project + '/rest/v1/rpc/m1_assets');
+    await tab.goto(origin + '/machines');
+    await tab.getByLabel('Email address').fill('m1-viewer@example.invalid');
+    console.log('Enter the replacement Viewer password in Edge and select Sign in.');
+    await tab.getByText('DEMO-ROB-001',{exact:true}).waitFor({timeout:180000});
+    await verifyDeactivation(() => tab.evaluate(() => window.repeatViewerRead()));
+  } else if (invalid) {
     await tab.goto(origin + '/machines');
     await tab.getByRole('heading',{name:'Workspace unavailable'}).waitFor();
     assert.equal(await tab.locator('input,.mc-row').count(),0);
@@ -81,12 +110,23 @@ try {
     const times = await tab.locator('.mc-history time').evaluateAll(nodes => nodes.map(n => Date.parse(n.dateTime)));
     assert.ok(times.every(Number.isFinite));
     assert.deepEqual(times,[...times].sort((a,b) => b-a));
+    if (live) console.log('PASS T03 QR continuation and reload; T02 profile loaded with', times.length, 'dated history entries in newest-first order');
     if (!live) await screenshot(tab,'integrated-fixture-profile-mobile');
     await second.bringToFront();
     await second.locator('.mc-row').first().waitFor();
     if (!live) await screenshot(second,'integrated-fixture-directory-desktop');
     await second.reload();
     await second.locator('.mc-row').first().waitFor();
+    if (live) {
+      const numbers = second.locator('.mc-row small');
+      assert.deepEqual(await numbers.allTextContents(), ['DEMO-ROB-001','DEMO-ROB-002',
+        ...Array.from({length:8}, (_, i) => 'TEST-' + (i + 3))]);
+      await second.getByRole('button',{name:'Next'}).click();
+      await second.getByText('TEST-11',{exact:true}).waitFor();
+      assert.deepEqual(await numbers.allTextContents(), ['TEST-11']);
+      assert.ok(await second.getByRole('button',{name:'Next'}).isDisabled());
+      console.log('PASS T01 North directory returned the expected 10 + 1 machines');
+    }
     await second.goto(origin + '/m/' + qr(12));
     await denied(second).waitFor();
 
@@ -119,6 +159,7 @@ try {
     await second.goBack();
     await login(second).waitFor();
     assert.equal(await second.locator('.mc-details').count(),0);
+    if (live) console.log('PASS T06 logout cleared both tabs after delayed read and Back');
     await signIn('machine',record(tab));
     await tab.getByText('Machine admin',{exact:true}).waitFor();
     await tab.goto(origin + '/m/' + qr(2));
@@ -128,6 +169,27 @@ try {
     await tab.bringToFront();
     await logout();
     console.log('PASS QR, directory, history, scoped denials, two-tab account switch and back navigation',live ? '(hosted)' : '(intercepted HTTP)');
+    if (live) {
+      await tab.goto(origin + '/machines');
+      await signIn('south',tab.getByText('TEST-12',{exact:true}));
+      assert.deepEqual(await tab.locator('.mc-row small').allTextContents(), ['TEST-12']);
+      assert.ok(await tab.getByRole('button',{name:'Next'}).isDisabled());
+      await tab.locator('.mc-row').click();
+      await tab.getByText('View only',{exact:true}).waitFor();
+      assert.equal(new URL(tab.url()).pathname,'/m/' + qr(12));
+      await tab.goto(origin + '/machines');
+      await tab.getByLabel('Find a machine').fill('DEMO-ROB');
+      await tab.getByRole('button',{name:'Search',exact:true}).click();
+      await tab.getByText('No machines match your search.',{exact:true}).waitFor();
+      assert.ok(await tab.getByRole('button',{name:'Next'}).isDisabled());
+      for (const north of [1,2]) {
+        await tab.goto(origin + '/m/' + qr(north));
+        await denied(tab).waitFor();
+        assert.equal(await tab.locator('.mc-details,.mc-history,.mc-row').count(),0);
+      }
+      await logout();
+      console.log('PASS T05 South directory, South profile, empty North search and both North QR denials');
+    }
     if (!live) {
       await tab.goto(origin + '/m/' + qr(1));
       await signIn('viewer',record(tab));
@@ -139,6 +201,21 @@ try {
     }
   }
 } finally {
-  await browser?.close();
-  await server.close();
+  try {
+    if (live && tab && !tab.isClosed()) {
+      await tab.bringToFront();
+      const signOut = tab.getByRole('button',{name:'Sign out'});
+      const signedOut = tab.getByRole('heading',{name:'Sign in',exact:true});
+      await signOut.or(signedOut).first().waitFor({timeout:15000});
+      if (await signOut.isVisible()) {
+        await signOut.click();
+        await signedOut.waitFor();
+      }
+      assert.equal(await tab.getByText('Local access is locked. Remote sign-out could not be confirmed.').count(),0,
+        'Remote session cleanup needs operator verification');
+    }
+  } finally {
+    try { await browser?.close(); }
+    finally { await server.close(); }
+  }
 }

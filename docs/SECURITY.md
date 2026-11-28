@@ -21,14 +21,13 @@ Cloud development: use separate project identities and credentials, no real comp
 
 ## Synthetic development credential incident
 
-**OPEN — remediation verification pending.** Developer A confirmed a Supabase privileged secret API key for the isolated synthetic CMMS development project appeared in the browser address bar in a shared screenshot. Revocation was recommended. Its completion and effectiveness have yet to be confirmed.
+**M1 incident review completed on Developer A's attestations.** A privileged Supabase secret API key for the isolated synthetic cmms-dev project appeared in the address bar of a shared screenshot. Developer A subsequently confirmed the following outcomes for project `fgawjraoekdnhdbqqrvm`.
 
 | Follow-up | Reported status |
 |---|---|
-| Verify exposed key revocation and replacement administrative key deletion | Pending verification |
-| Review API access logs and Auth audit logs | Pending |
-| Scan repository and Git history for credentials | Pending |
-| Inspect dependent configurations | Pending |
-| Investigate unauthorized activity | Pending. No evidence currently establishes unauthorized use. Whether misuse occurred remains undetermined. |
+| Exposed and temporary administrative keys | Developer A confirmed revocation, verified its effectiveness and confirmed the temporary key's disposition. The specific disposition and verification method were not supplied. |
+| API and Auth logs | Developer A reviewed both and identified no unexpected activity. The matching accidental test request was identified as rejected. Review interval and retention coverage were not supplied. |
+| Repository and Git history | Prior local pattern scan found zero candidates in 49 working files, 92 distinct Git blobs and 14 commit/tag objects. See the acceptance record for the scan limits. |
+| Dependent configurations and services | Developer A confirmed these were checked. |
 
-The subsequent standard hosted security suite passed with the publishable key. Close the incident only when the owner records the remediation and investigation outcomes. Keep credentials, suffixes, screenshots containing credentials, tokens and sensitive logs out of this record.
+The dashboard outcomes are operator attestations. The assistant did not inspect dashboard evidence or exercise the exposed key. The available log findings cannot establish that misuse never occurred. The earlier standard hosted suite passed using the publishable key. Its result establishes application test behavior only. [M1 acceptance record](M1-ACCEPTANCE.md)

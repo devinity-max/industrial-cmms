@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { env } from 'node:process';
-import { stdin, stdout } from 'node:process';
-import { createInterface } from 'node:readline/promises';
+import { verifyDeactivation } from './same-jwt.mjs';
 import { createClient } from '@supabase/supabase-js';
 
 // Explicit operator invocation only. No automatic dotenv loading or CI hook.
@@ -72,21 +71,16 @@ try {
   const current = await viewer.auth.getSession();
   assert.ok(current.data.session);
   if (env.M1_TEST_DISABLE_VIEWER === '1') {
-    assert.ok(stdin.isTTY, 'Requires the operator at an interactive terminal');
     const session = current.data.session;
-    // Capture once. These two requests use identical authorization, without SDK refresh.
-    const check = () => globalThis.fetch(url + '/rest/v1/rpc/m1_assets', {
-      method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + session.access_token,
+    await verifyDeactivation(async () => {
+      const response = await globalThis.fetch(url + '/rest/v1/rpc/m1_assets', {
+        method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + session.access_token,
         'Content-Type': 'application/json' }, body: '{}', cache: 'no-store', redirect: 'error',
+      });
+      const body = await response.json();
+      assert.ok(Date.now() < session.expires_at * 1000, 'Original Viewer JWT expired');
+      return { status: response.status, hasRows: body.items?.length > 0, code: body.code };
     });
-    assert.equal((await check()).status, 200);
-    const terminal = createInterface({ input: stdin, output: stdout });
-    try { await terminal.question('Disable only the approved fixture viewer profile, commit, then press Enter. '); }
-    finally { terminal.close(); }
-    const response = await check();
-    assert.ok(Date.now() < session.expires_at * 1000, 'JWT expired during test; repeat with a fresh login');
-    assert.equal(response.status, 403);
-    assert.equal((await response.json()).code, '42501');
   }
   const revoked = await viewer.auth.signOut({ scope: 'local' });
   assert.ok(!revoked.error, 'Fixture logout failed');
