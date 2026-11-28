@@ -41,7 +41,10 @@ Instants use UTC ISO 8601 strings. Operational dates use plant-local YYYY-MM-DD.
 ## Reminder design
 A scheduled server job finds eligible overdue obligations; transaction creates one alert/outbox per approved recipient and stage, no duplicates. Worker claims pending deliveries safely, rechecks obligation before sending, uses provider idempotency where supported, logs failures and retries with bounds. On submission, resolve internal alerts and cancel unsent work; an already delivered message cannot be recalled. Scheduler runs independently of open browser. Monitor job heartbeat. Demo uses simulated clock and fake delivery adapter or approved isolated mail sink, real email/WhatsApp disabled. Configure deadlines, recipients, calendars and escalation only after approval. Do not send confidential details or access tokens in external messages. Links still require login. No WhatsApp Web automation; official approved platform only. Production exact-once delivery cannot be guaranteed across provider failures.
 
+The [M2-A ledger proposal](M2-LEDGER.md) specifies the local backend implementation and frontend handoff. Its narrower activity fields and explicit configured obligations supersede the earlier planning examples for this prototype. Business rule and contract review are pending.
+
 ## Layout ownership
+
 Developer A owns dependencies, manifest, lockfile, shared configuration and `src/contracts/`. Both developers review contract changes before use. A owns `src/lib/data/`, `supabase/`, migrations and backend tests. Developer B owns route definitions and navigation in the frontend, `src/features/`, `src/components/`, `src/pages/` and UI tests. B tests routes with an injected adapter. The designated integration owner alone edits `src/main.tsx` to mount B's routes with A's adapter after both slices are reviewed. Coordinate documentation changes.
 
 ## Hosted development workflow (v1.1)

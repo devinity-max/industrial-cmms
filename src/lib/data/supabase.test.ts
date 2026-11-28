@@ -10,7 +10,7 @@ let failVerify: boolean;
 let rpcStarted: (() => void) | undefined;
 let completeRead: (() => void) | undefined;
 let account: string;
-let intercept: ((path: string) => Response | Promise<Response> | undefined) | undefined;
+let intercept: ((path: string, init?: RequestInit) => Response | Promise<Response> | undefined) | undefined;
 const json = (value: unknown, status = 200) => Response.json(value, { status });
 
 beforeEach(() => {
@@ -27,9 +27,9 @@ beforeEach(() => {
   completeRead = undefined;
   account = userId;
   intercept = undefined;
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
-    const override = intercept?.(path);
+    const override = intercept?.(path, init);
     if (override) return override;
     if (path.includes('grant_type=refresh_token')) {
       return json({ code: 'refresh_token_not_found', message: 'Invalid refresh token' }, 400);
@@ -50,6 +50,85 @@ beforeEach(() => {
     throw new Error('Unexpected test request');
   });
   adapter = createCmmsAdapter(url,key);
+});
+
+const assetId = '20000000-0000-4000-8000-000000000001';
+const dailyId = '50000000-0000-4000-8000-000000000001';
+const dailyQuery = { assetId, operationalDate: '2026-11-28' };
+const submission = {
+  obligationId: dailyId, expectedVersion: 0, requestId: '60000000-0000-4000-8000-000000000001',
+  activities: [{ category: 'Inspection', machineCondition: 'Sample observation', observation: null, action: null }],
+};
+const saved = {
+  id: '70000000-0000-4000-8000-000000000001', obligationId: dailyId, version: 1,
+  submittedBy: userId, submittedAt: '2026-11-28T12:00:00+00:00', status: 'submitted',
+};
+
+it('loads configured, unconfigured and submitted days and verifies revision identity', async () => {
+  await adapter.signIn(login());
+  const open = { id: dailyId, ...dailyQuery, shiftKey: null, dueAt: null, state: 'open', version: 0, current: null };
+  const revision = { ...saved, activities: submission.activities, reason: null };
+  let response: unknown = { obligation: null };
+  intercept = path => path.includes('/rpc/') ? json(response) : undefined;
+  expect(await adapter.getDailyObligation(dailyQuery)).toEqual({ ok: true, data: null });
+  response = { obligation: open };
+  expect(await adapter.getDailyObligation(dailyQuery)).toEqual({ ok: true, data: open });
+  const completed = { ...open, state: 'submitted', version: 1, current: revision };
+  response = { obligation: completed };
+  expect(await adapter.getDailyObligation(dailyQuery)).toEqual({ ok: true, data: completed });
+  expect((await adapter.getDailyObligation({ ...dailyQuery, shiftKey: 'other' })).ok).toBe(false);
+  response = { obligation: { ...completed, version: 2 } };
+  expect((await adapter.getDailyObligation(dailyQuery)).ok).toBe(false);
+  response = revision;
+  expect(await adapter.getDailyRevision({ obligationId: dailyId, version: 1 })).toEqual({ ok: true, data: revision });
+  expect((await adapter.getDailyRevision({ obligationId: dailyId, version: 2 })).ok).toBe(false);
+});
+
+it('sends the same logical retry and accepts only a matching persisted receipt', async () => {
+  expect(await adapter.submitDaily(submission)).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
+  await adapter.signIn(login());
+  const requests: unknown[] = [];
+  let response = saved;
+  intercept = (path, init) => {
+    if (!path.endsWith('/m2_submit_daily')) return;
+    requests.push(JSON.parse(String(init?.body)));
+    return json(response);
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    expect(await adapter.submitDaily(submission)).toEqual({ ok: true, data: saved });
+  }
+  expect(requests).toEqual(Array(2).fill({ obligation: dailyId, expected_version: 0,
+    request_key: submission.requestId, entries: submission.activities, correction_reason: null }));
+  response = { ...saved, submittedBy: crypto.randomUUID() };
+  expect(await adapter.submitDaily(submission)).toMatchObject({ ok: false, error: { code: 'TEMPORARY_FAILURE' } });
+});
+
+it.each([
+  ['PT409', 409, 'CONFLICT'], ['42501', 403, 'NOT_FOUND_OR_DENIED'], ['22023', 400, 'VALIDATION'],
+  ['unavailable', 503, 'TEMPORARY_FAILURE'],
+] as const)('sanitizes maintenance RPC error %s', async (code, status, expected) => {
+  await adapter.signIn(login());
+  intercept = path => path.endsWith('/m2_submit_daily') ? json({ code, message: 'internal fixture detail' }, status) : undefined;
+  const result = await adapter.submitDaily(submission);
+  expect(result).toMatchObject({ ok: false, error: { code: expected } });
+  expect(JSON.stringify(result)).not.toContain('internal fixture detail');
+});
+
+it('discards a late write receipt after logout even when the server reports success', async () => {
+  await adapter.signIn(login());
+  let release!: (response: Response) => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  intercept = path => {
+    if (!path.endsWith('/m2_submit_daily')) return;
+    entered();
+    return new Promise<Response>(resolve => { release = resolve; });
+  };
+  const writing = adapter.submitDaily(submission);
+  await started;
+  expect((await adapter.signOut()).ok).toBe(true);
+  release(json(saved));
+  expect(await writing).toMatchObject({ ok: false, error: { code: 'UNAUTHENTICATED' } });
 });
 
 afterEach(() => { adapter.dispose(); vi.unstubAllGlobals(); });

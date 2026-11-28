@@ -1,6 +1,6 @@
 import type { AssetDetail, AssetSummary, CursorPage, HistoryItem } from '../../contracts';
 
-function record(value: unknown): value is Record<string, unknown> {
+export function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 export function uuid(value: unknown): value is string {
@@ -14,10 +14,13 @@ export function detail(value: unknown): value is AssetDetail {
   return record(value) && asset(value) &&
     record(value.capabilities) && typeof value.capabilities.canManageAsset === 'boolean';
 }
+export function instant(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value) &&
+    Number.isFinite(Date.parse(value));
+}
 export function history(value: unknown): value is HistoryItem {
   return record(value) && uuid(value.id) && uuid(value.assetId) && typeof value.kind === 'string' &&
-    typeof value.occurredAt === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value.occurredAt) &&
-    Number.isFinite(Date.parse(value.occurredAt)) &&
+    instant(value.occurredAt) &&
     typeof value.summary === 'string' && typeof value.actorDisplay === 'string' &&
     typeof value.version === 'number' && Number.isSafeInteger(value.version) && value.version > 0;
 }

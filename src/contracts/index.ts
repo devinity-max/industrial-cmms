@@ -128,3 +128,5 @@ export interface ProvisionalMaintenanceAdapter {
   submitDaily(input: SubmitDailyInput): Promise<Result<SubmissionReceipt>>;
   listAlerts(input: { cursor?: string }): Promise<Result<CursorPage<NotificationSummary>>>;
 }
+
+export type { MaintenanceAdapter, LedgerObligation, LedgerActivity, SubmitLedgerInput, LedgerReceipt, DailyRevision } from './maintenance';

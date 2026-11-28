@@ -1,6 +1,8 @@
 import { createClient } from './sdk.mjs';
 import { asset, detail, history, page, uuid } from './responses';
-import type { ApiErrorCode, AssetDetail, AssetSummary, AuthState, CmmsAdapter, CursorPage, HistoryItem, Result } from '../../contracts';
+import { obligationReply, receipt, revision as dailyRevision } from './maintenance';
+import type { LedgerActivity, ApiErrorCode, AssetDetail, AssetSummary, AuthState, CmmsAdapter, CursorPage,
+  LedgerObligation, DailyRevision, HistoryItem, MaintenanceAdapter, Result, LedgerReceipt } from '../../contracts';
 
 type Rpc<Args, Returns> = { Args: Args; Returns: Returns };
 type Database = { public: {
@@ -11,6 +13,10 @@ type Database = { public: {
     m1_asset: Rpc<{ token: string }, AssetDetail>;
     m1_assets: Rpc<{ page_size: number; filter: string; bookmark: string | null }, CursorPage<AssetSummary>>;
     m1_history: Rpc<{ asset: string; bookmark: string | null }, CursorPage<HistoryItem>>;
+    m2_daily_obligation: Rpc<{ asset: string; day_key: string; shift_key: string }, { obligation: LedgerObligation | null }>;
+    m2_daily_revision: Rpc<{ obligation: string; revision: number }, DailyRevision>;
+    m2_submit_daily: Rpc<{ obligation: string; expected_version: number; request_key: string;
+      entries: readonly LedgerActivity[]; correction_reason: string | null }, LedgerReceipt>;
   };
 } };
 
@@ -27,7 +33,7 @@ function failure(code: ApiErrorCode): Result<never> {
 const signedOut = (): Result<AuthState> => ok({ status: 'signed_out' });
 type Listener = (state: Result<AuthState>) => void;
 
-export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dispose(): void } {
+export function createCmmsAdapter(url: string, key: string): CmmsAdapter & MaintenanceAdapter & { dispose(): void } {
   if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(url) || !/^sb_publishable_[\w-]+$/.test(key)) {
     throw new Error('Invalid hosted development configuration.');
   }
@@ -93,6 +99,10 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
   }
   function storageChanged(event: StorageEvent) {
     if (event.key === epochKey || event.key === null) sync();
+    // Another tab may receive SIGNED_IN before the initiating tab finishes its
+    // profile check. Reverify once its pending marker is cleared.
+    if (event.key === connection.storageKey + ':pending' && event.newValue === null &&
+        listeners.size && isCurrent(connection.epoch)) void notifyVerified();
   }
   window.addEventListener('storage', storageChanged);
 
@@ -107,7 +117,7 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
   }
 
   type Reply = { data: unknown; error: { code: string } | null; status: number };
-  async function read<T>(request: (client: typeof connection.client) => PromiseLike<Reply>,
+  async function callRpc<T>(request: (client: typeof connection.client) => PromiseLike<Reply>,
     valid: (value: unknown) => value is T, identityProbe = false): Promise<Result<T>> {
     sync();
     const { epoch, client } = connection;
@@ -120,7 +130,8 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
       if (!error && status >= 200 && status < 300 && valid(data)) return ok(data);
       if (status === 401) return failure('UNAUTHENTICATED');
       if (error?.code === '42501') return failure('NOT_FOUND_OR_DENIED');
-      if (error?.code === '22023' || error?.code === '22P02') return failure('VALIDATION');
+      if (error?.code === 'PT409') return failure('CONFLICT');
+      if (error?.code && ['22023','22P02','22003','22007','22008'].includes(error.code)) return failure('VALIDATION');
       return failure('TEMPORARY_FAILURE');
     } catch { return failure('TEMPORARY_FAILURE'); }
   }
@@ -136,7 +147,7 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
       if (error || !data.session) {
         return ok({ status: localStorage.getItem(storageKey + ':used') ? 'expired' : 'signed_out' });
       }
-      const user = await read(c => c.rpc('m1_user', {}), uuid, true);
+      const user = await callRpc(c => c.rpc('m1_user', {}), uuid, true);
       if (!isCurrent(epoch) || revision !== generation) return signedOut();
       if (!user.ok) {
         verifiedUser = undefined;
@@ -220,14 +231,29 @@ export function createCmmsAdapter(url: string, key: string): CmmsAdapter & { dis
         return await revoke(token);
       } catch { return failure('TEMPORARY_FAILURE'); }
     },
-    listAssets: ({ cursor, filter, pageSize }) => read(c => c.rpc('m1_assets', {
+    listAssets: ({ cursor, filter, pageSize }) => callRpc(c => c.rpc('m1_assets', {
       page_size: pageSize ?? 25, filter: filter ?? '', bookmark: cursor ?? null,
     }), (value): value is CursorPage<AssetSummary> => page(value, pageSize ?? 25, asset)),
-    getAssetByQr: token => read(c => c.rpc('m1_asset', { token }),
+    getAssetByQr: token => callRpc(c => c.rpc('m1_asset', { token }),
       (value): value is AssetDetail => detail(value) && value.qrToken.toLowerCase() === token.toLowerCase()),
-    listHistory: ({ assetId, cursor }) => read(c => c.rpc('m1_history', { asset: assetId, bookmark: cursor ?? null }),
+    listHistory: ({ assetId, cursor }) => callRpc(c => c.rpc('m1_history', { asset: assetId, bookmark: cursor ?? null }),
       (value): value is CursorPage<HistoryItem> => page(value, 25, history) &&
         value.items.every(item => item.assetId.toLowerCase() === assetId.toLowerCase())),
+    async getDailyObligation(query) {
+      const result = await callRpc(c => c.rpc('m2_daily_obligation', {
+        asset: query.assetId, day_key: query.operationalDate, shift_key: query.shiftKey ?? '',
+      }), (value): value is { obligation: LedgerObligation | null } => obligationReply(value, query));
+      return result.ok ? ok(result.data.obligation) : result;
+    },
+    getDailyRevision: ({ obligationId, version }) => callRpc(c => c.rpc('m2_daily_revision', {
+      obligation: obligationId, revision: version,
+    }), (value): value is DailyRevision => dailyRevision(value) &&
+      value.obligationId === obligationId.toLowerCase() && value.version === version),
+    submitDaily: input => callRpc(c => c.rpc('m2_submit_daily', {
+      obligation: input.obligationId, expected_version: input.expectedVersion, request_key: input.requestId,
+      entries: input.activities, correction_reason: input.reason ?? null,
+    }), (value): value is LedgerReceipt => receipt(value) && value.obligationId === input.obligationId.toLowerCase() &&
+      value.version === input.expectedVersion + 1 && value.submittedBy === verifiedUser),
     dispose() {
       disposed = true;
       disconnect();

@@ -18,3 +18,16 @@ Production additionally requires company-owned approved domain/accounts, environ
 Incident response: disable affected access/credentials, stop suspect deployment or jobs, preserve evidence, notify agreed company incident owner, assess exposure, restore/redeploy from known-good state, record corrective actions. Agree retention and lawful handling with company. No production secrets in issue trackers or agent transcripts.
 
 Cloud development: use separate project identities and credentials, no real company records in dev. Restrict administrative dashboard access, use individual accounts and MFA, keep server secrets out of browser bundles and agent prompts. No remote resets. Only Developer A applies approved reviewed migrations; validate the target before each mutation.
+
+## Synthetic development credential incident
+
+**M1 incident review completed on Developer A's attestations.** A privileged Supabase secret API key for the isolated synthetic cmms-dev project appeared in the address bar of a shared screenshot. Developer A subsequently confirmed the following outcomes for project `fgawjraoekdnhdbqqrvm`.
+
+| Follow-up | Reported status |
+|---|---|
+| Exposed and temporary administrative keys | Developer A confirmed revocation, verified its effectiveness and confirmed the temporary key's disposition. The specific disposition and verification method were not supplied. |
+| API and Auth logs | Developer A reviewed both and identified no unexpected activity. The matching accidental test request was identified as rejected. Review interval and retention coverage were not supplied. |
+| Repository and Git history | Prior local pattern scan found zero candidates in 49 working files, 92 distinct Git blobs and 14 commit/tag objects. See the acceptance record for the scan limits. |
+| Dependent configurations and services | Developer A confirmed these were checked. |
+
+The dashboard outcomes are operator attestations. The assistant did not inspect dashboard evidence or exercise the exposed key. The available log findings cannot establish that misuse never occurred. The earlier standard hosted suite passed using the publishable key. Its result establishes application test behavior only. [M1 acceptance record](M1-ACCEPTANCE.md)
